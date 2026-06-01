@@ -1,0 +1,166 @@
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%      { transform: translateX(-6px); }
+  40%      { transform: translateX(6px); }
+  60%      { transform: translateX(-4px); }
+  80%      { transform: translateX(4px); }
+}
+@keyframes errorPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(198,40,40,0.4); }
+  70%  { box-shadow: 0 0 0 10px rgba(198,40,40,0); }
+  100% { box-shadow: 0 0 0 0 rgba(198,40,40,0); }
+}
+
+.page { display: flex; flex-direction: column; gap: 20px; }
+
+/* ── Header ─────────────────────────────────────── */
+.surveyHeader {
+  background: var(--white); border-radius: var(--radius); padding: 14px 20px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  box-shadow: var(--shadow);
+}
+.respondentField { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+.respondentField label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.respondentField input {
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+  font-size: 14px; font-family: var(--font-body); background: var(--cream);
+}
+.respondentField input:focus { outline: none; border-color: var(--teal); background: white; }
+
+.overallProgress { flex: 1; min-width: 180px; }
+.overallProgress span { font-size: 12px; color: var(--text-muted); }
+.overallBar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.overallFill { height: 100%; background: linear-gradient(90deg, var(--teal), var(--teal-light)); border-radius: 3px; transition: width 0.4s; }
+
+.headerBtns { display: flex; gap: 8px; align-items: center; }
+.cancelTopBtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 8px;
+  background: #fff0f0; border: 1px solid #ffcdd2; color: var(--red); cursor: pointer;
+}
+.cancelTopBtn:hover { background: var(--red); color: white; }
+
+/* ── Validation banner ──────────────────────────── */
+.validationBanner {
+  display: flex; align-items: center; gap: 10px;
+  background: #ffebee; border: 1px solid #ef9a9a; border-radius: var(--radius);
+  padding: 12px 18px; font-size: 13px; color: #b71c1c; font-weight: 500;
+  animation: fadeIn 0.2s ease;
+}
+
+/* ── Layout ─────────────────────────────────────── */
+.layout { display: flex; gap: 20px; align-items: flex-start; }
+.questionsPanel { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+
+.sectionHeader {
+  background: var(--white); border-radius: var(--radius); padding: 16px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+  box-shadow: var(--shadow); flex-wrap: wrap; gap: 8px;
+}
+.sectionTitle { font-family: var(--font-display); font-size: 20px; color: var(--navy); }
+.sectionProgress { font-size: 13px; color: var(--text-muted); background: var(--cream); padding: 4px 12px; border-radius: 20px; }
+.sectionIncomplete { color: var(--red); font-weight: 600; }
+
+.questions { display: flex; flex-direction: column; gap: 12px; }
+
+/* Error highlight pulse on scroll-to */
+.errorHighlight { animation: errorPulse 0.8s ease; }
+
+/* ── Nav buttons ─────────────────────────────────── */
+.navBtns {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--white); border-radius: var(--radius); padding: 14px 20px;
+  box-shadow: var(--shadow); gap: 10px;
+}
+.btnBack {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  padding: 10px 18px; font-size: 14px; font-family: var(--font-body); color: var(--text);
+}
+.btnBack:hover:not(:disabled) { background: var(--cream); }
+.btnBack:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Centre cancel X button */
+.btnCancel {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #fff0f0; border: 1.5px solid #ffcdd2;
+  color: var(--red); cursor: pointer; font-size: 16px; font-weight: 700;
+  flex-shrink: 0;
+}
+.btnCancel:hover { background: var(--red); color: white; border-color: var(--red); }
+
+.btnNext {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--navy); color: white; border: none; cursor: pointer;
+  padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; font-family: var(--font-body);
+}
+.btnNext:hover { background: var(--navy-light); }
+.btnComplete {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--teal); color: white; border: none; cursor: pointer;
+  padding: 10px 22px; border-radius: 8px; font-size: 14px; font-weight: 600; font-family: var(--font-body);
+}
+.btnComplete:hover:not(:disabled) { background: var(--teal-light); }
+.btnComplete:disabled { opacity: 0.6; cursor: not-allowed; }
+.shake { animation: shake 0.5s ease; }
+
+/* ── Cancel Modal ────────────────────────────────── */
+.modalOverlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 300;
+  animation: fadeIn 0.2s ease;
+}
+.modal {
+  background: white; border-radius: var(--radius-lg); padding: 40px 36px;
+  max-width: 420px; width: 92%; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  animation: fadeIn 0.25s ease;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.modalIcon { width: 60px; height: 60px; border-radius: 50%; background: #fff8e1; display: flex; align-items: center; justify-content: center; }
+.modalTitle { font-family: var(--font-display); font-size: 22px; color: var(--navy); margin: 0; }
+.modalText { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+.modalBtns { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 8px; }
+.modalSave {
+  background: var(--teal); color: white; border: none; cursor: pointer;
+  padding: 13px; border-radius: 10px; font-size: 14px; font-weight: 600; font-family: var(--font-body);
+}
+.modalSave:hover:not(:disabled) { background: var(--teal-light); }
+.modalSave:disabled { opacity: 0.6; cursor: not-allowed; }
+.modalDiscard {
+  background: #ffebee; color: var(--red); border: 1px solid #ffcdd2; cursor: pointer;
+  padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; font-family: var(--font-body);
+}
+.modalDiscard:hover { background: var(--red); color: white; border-color: var(--red); }
+.modalBack {
+  background: none; color: var(--text-muted); border: 1px solid var(--border); cursor: pointer;
+  padding: 10px; border-radius: 10px; font-size: 13px; font-family: var(--font-body);
+}
+.modalBack:hover { background: var(--cream); }
+
+/* ── Done screen ─────────────────────────────────── */
+.doneScreen { display: flex; align-items: center; justify-content: center; min-height: 60vh; }
+.doneCard {
+  background: var(--white); border-radius: var(--radius-lg); padding: 48px;
+  text-align: center; max-width: 480px; box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.4s ease; display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.doneCard h2 { font-family: var(--font-display); font-size: 28px; color: var(--navy); }
+.doneCard p { color: var(--text-muted); font-size: 15px; line-height: 1.6; }
+.doneBtns { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; width: 100%; }
+.btnPrimary {
+  background: var(--teal); color: white; border: none; cursor: pointer;
+  padding: 13px; border-radius: 10px; font-size: 15px; font-weight: 600; font-family: var(--font-body);
+}
+.btnPrimary:hover { background: var(--teal-light); }
+.btnSecondary {
+  background: var(--cream); color: var(--navy); border: 1px solid var(--border); cursor: pointer;
+  padding: 12px; border-radius: 10px; font-size: 14px; font-family: var(--font-body);
+}
+.btnSecondary:hover { background: #eee; }
+
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .surveyHeader { flex-direction: column; align-items: stretch; }
+}
