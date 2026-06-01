@@ -1,0 +1,19 @@
+{
+  "appId": "com.anisa.surveyapp",
+  "appName": "Anisa Medical Survey",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "Preferences": {
+      "group": "AnisaSurveyApp"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  },
+  "android": {
+    "icon": "public/icon.png"
+  }
+}
