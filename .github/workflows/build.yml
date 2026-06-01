@@ -68,6 +68,114 @@ jobs:
           name: react-dist
           path: dist/
 
+      - name: Generate valid Windows ICO using PowerShell System.Drawing
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+
+          # Draw the icon in PowerShell using GDI+
+          function New-IconBitmap {
+            param([int]$Size)
+            $bmp = New-Object System.Drawing.Bitmap($Size, $Size)
+            $g   = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+
+            $cx = $Size / 2
+            $r  = [int]($Size * 0.47)
+
+            # Navy background circle
+            $navyBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 10, 31, 61))
+            $g.FillEllipse($navyBrush, ($cx - $r), ($cx - $r), ($r * 2), ($r * 2))
+            $navyBrush.Dispose()
+
+            # Teal cross - vertical
+            $tealBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(240, 22, 184, 163))
+            $arm = [int]($Size * 0.44)
+            $w   = [int]($Size * 0.22)
+            $g.FillRectangle($tealBrush, ($cx - $w/2), ($cx - $arm/2), $w, $arm)
+            # Teal cross - horizontal
+            $g.FillRectangle($tealBrush, ($cx - $arm/2), ($cx - $w/2), $arm, $w)
+            $tealBrush.Dispose()
+
+            # Navy center hole
+            $holeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 10, 31, 61))
+            $hole = [int]($Size * 0.11)
+            $g.FillEllipse($holeBrush, ($cx - $hole), ($cx - $hole), ($hole * 2), ($hole * 2))
+            $holeBrush.Dispose()
+
+            # Gold ring
+            $goldPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 240, 200, 96), [int]([Math]::Max(3, $Size / 42)))
+            $ringR = [int]($Size * 0.078)
+            $g.DrawEllipse($goldPen, ($cx - $ringR), ($cx - $ringR), ($ringR * 2), ($ringR * 2))
+            $goldPen.Dispose()
+
+            # Border ring
+            $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 26, 107, 138), [int]([Math]::Max(2, $Size / 90)))
+            $g.DrawEllipse($borderPen, ($cx - $r + 1), ($cx - $r + 1), ($r * 2 - 2), ($r * 2 - 2))
+            $borderPen.Dispose()
+
+            $g.Dispose()
+            return $bmp
+          }
+
+          # Build ICO file manually - proper ICO binary format
+          # ICO = header + directory entries + image data (PNG format inside ICO)
+          $sizes  = @(16, 32, 48, 64, 128, 256)
+          $pngDatas = @()
+
+          foreach ($size in $sizes) {
+            $bmp = New-IconBitmap -Size $size
+            $ms  = New-Object System.IO.MemoryStream
+            $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+            $pngDatas += , $ms.ToArray()
+            $bmp.Dispose()
+            $ms.Dispose()
+          }
+
+          # ICO header: reserved(2) + type=1(2) + count(2)
+          $count     = $sizes.Count
+          $headerSz  = 6
+          $dirEntrySz = 16
+          $offset    = $headerSz + $dirEntrySz * $count
+
+          $ms = New-Object System.IO.MemoryStream
+          $bw = New-Object System.IO.BinaryWriter($ms)
+
+          # Header
+          $bw.Write([uint16]0)      # reserved
+          $bw.Write([uint16]1)      # type: ICO
+          $bw.Write([uint16]$count) # image count
+
+          # Directory
+          for ($i = 0; $i -lt $count; $i++) {
+            $sz  = $sizes[$i]
+            $len = $pngDatas[$i].Length
+            $bw.Write([byte]$(if ($sz -ge 256) { 0 } else { $sz }))  # width  (0=256)
+            $bw.Write([byte]$(if ($sz -ge 256) { 0 } else { $sz }))  # height (0=256)
+            $bw.Write([byte]0)       # color count
+            $bw.Write([byte]0)       # reserved
+            $bw.Write([uint16]1)     # planes
+            $bw.Write([uint16]32)    # bit count
+            $bw.Write([uint32]$len)  # size of image data
+            $bw.Write([uint32]$offset) # offset
+            $offset += $len
+          }
+
+          # Image data
+          foreach ($png in $pngDatas) {
+            $bw.Write($png)
+          }
+
+          $bw.Flush()
+          $icoBytes = $ms.ToArray()
+          $bw.Dispose()
+          $ms.Dispose()
+
+          # Write ICO
+          [System.IO.File]::WriteAllBytes("$PWD\public\icon.ico", $icoBytes)
+          Write-Host "Generated icon.ico: $($icoBytes.Length) bytes, $count sizes"
+          Write-Host "Sizes: $($sizes -join ', ')"
+
       - name: Build Windows installer
         run: npx electron-builder --win --x64
         env:
@@ -124,70 +232,85 @@ jobs:
       - name: Sync Capacitor with dist
         run: npx cap sync android
 
-      - name: Install icon copy dependencies (Python Pillow)
-        run: pip install pillow
-
-      - name: Copy app icons into Android res folders
+      - name: Generate and inject Android launcher icons
         run: |
+          pip install pillow
           python3 << 'PY'
           from PIL import Image, ImageDraw
-          import os, shutil
+          import os
 
-          def draw_icon(size=512):
-              img = Image.new('RGBA', (size, size), (0,0,0,0))
+          def draw_icon(size):
+              img  = Image.new('RGBA', (size, size), (0,0,0,0))
               draw = ImageDraw.Draw(img)
-              cx, cy = size//2, size//2
-              r = int(size * 0.47)
+              cx = cy = size // 2
+              r  = int(size * 0.47)
+
+              # Navy gradient background
               for i in range(r, 0, -2):
-                  ratio = i / r
-                  R = int(10 + ratio * 16); G = int(20 + ratio * 55); B = int(40 + ratio * 80)
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i], fill=(R,G,B,255))
-              draw.ellipse([cx-r, cy-r, cx+r, cy+r], outline=(26,107,138,255), width=max(3, size//90))
+                  t = i / r
+                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
+                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
+
+              # Border
+              draw.ellipse([cx-r, cy-r, cx+r, cy+r],
+                           outline=(26,107,138,255), width=max(2, size//90))
+
+              # Teal cross
               arm = int(size * 0.44); w = int(size * 0.22)
-              teal = (22, 184, 163, 240); rad = max(4, size // 22)
-              draw.rounded_rectangle([cx-w//2, cy-arm//2, cx+w//2, cy+arm//2], radius=rad, fill=teal)
-              draw.rounded_rectangle([cx-arm//2, cy-w//2, cx+arm//2, cy+w//2], radius=rad, fill=teal)
+              rad = max(4, size // 22)
+              draw.rounded_rectangle([cx-w//2, cy-arm//2, cx+w//2, cy+arm//2],
+                                     radius=rad, fill=(22,184,163,240))
+              draw.rounded_rectangle([cx-arm//2, cy-w//2, cx+arm//2, cy+w//2],
+                                     radius=rad, fill=(22,184,163,240))
+
+              # Navy center hole
               hole = int(size * 0.105)
               for i in range(hole, 0, -2):
-                  ratio = i / hole
-                  R = int(10 + ratio * 16); G = int(20 + ratio * 55); B = int(40 + ratio * 80)
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i], fill=(R,G,B,255))
-              ring_r = int(size * 0.078); ring_w = max(3, size // 42)
-              draw.ellipse([cx-ring_r, cy-ring_r, cx+ring_r, cy+ring_r], outline=(240,200,96,255), width=ring_w)
-              sw = max(2, size//56); sy0 = cy - ring_r - int(size * 0.055); sy1 = cy - ring_r + ring_w
+                  t = i / hole
+                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
+                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
+
+              # Gold ring
+              rr = int(size * 0.078)
+              rw = max(3, size // 42)
+              draw.ellipse([cx-rr, cy-rr, cx+rr, cy+rr],
+                           outline=(240,200,96,255), width=rw)
+
+              # Gold stem
+              sw  = max(2, size//56)
+              sy0 = cy - rr - int(size * 0.055)
+              sy1 = cy - rr + rw
               if sy1 > sy0:
                   draw.rectangle([cx-sw, sy0, cx+sw, sy1], fill=(240,200,96,255))
-              kd = max(4, size // 44)
+              kd = max(4, size//44)
               draw.ellipse([cx-kd, sy0-kd, cx+kd, sy0+kd], fill=(240,200,96,255))
-              dot_r = max(2, size // 58); offset = int(size * 0.185)
-              for dx, dy in [(0,-offset),(0,offset),(-offset,0),(offset,0)]:
-                  draw.ellipse([cx+dx-dot_r, cy+dy-dot_r, cx+dx+dot_r, cy+dy+dot_r], fill=(255,255,255,50))
+
+              # Clip to circle
               mask = Image.new('L', (size, size), 0)
               ImageDraw.Draw(mask).ellipse([cx-r, cy-r, cx+r, cy+r], fill=255)
               img.putalpha(mask)
-              return img
 
-          android_sizes = {
+              # Flatten onto navy background (Android needs opaque PNG)
+              bg = Image.new('RGB', (size, size), (10, 20, 40))
+              bg.paste(img, (0, 0), img)
+              return bg
+
+          sizes = {
               'mipmap-mdpi':    48,
               'mipmap-hdpi':    72,
               'mipmap-xhdpi':   96,
               'mipmap-xxhdpi':  144,
               'mipmap-xxxhdpi': 192,
           }
-
-          res_base = 'android/app/src/main/res'
-          for folder, size in android_sizes.items():
-              d = os.path.join(res_base, folder)
+          res = 'android/app/src/main/res'
+          for folder, sz in sizes.items():
+              d = os.path.join(res, folder)
               os.makedirs(d, exist_ok=True)
-              img = draw_icon(size)
-              # Convert RGBA to square RGB for launcher
-              bg = Image.new('RGB', (size, size), (10, 31, 61))
-              bg.paste(img, (0, 0), img)
-              bg.save(os.path.join(d, 'ic_launcher.png'))
-              bg.save(os.path.join(d, 'ic_launcher_round.png'))
-              print(f"Written {folder}/ic_launcher.png ({size}x{size})")
-
-          print("All Android icons written!")
+              icon = draw_icon(sz)
+              icon.save(os.path.join(d, 'ic_launcher.png'))
+              icon.save(os.path.join(d, 'ic_launcher_round.png'))
+              print(f"  {folder}: {sz}x{sz}")
+          print("Android icons done!")
           PY
 
       - name: Make gradlew executable
@@ -201,7 +324,7 @@ jobs:
           cd android
           ./gradlew assembleDebug --no-daemon
 
-      - name: Rename APK to anisha-survey.apk
+      - name: Rename APK
         run: mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/anisha-survey.apk
 
       - name: Upload Android APK
