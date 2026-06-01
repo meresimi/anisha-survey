@@ -1,0 +1,268 @@
+name: Build Android APK & Windows Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'What to build'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - android-only
+          - windows-only
+
+jobs:
+  # ─────────────────────────────────────────
+  # JOB 1: Build React app
+  # ─────────────────────────────────────────
+  build-react:
+    name: Build React App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-dist
+          path: dist/
+          retention-days: 1
+
+  # ─────────────────────────────────────────
+  # JOB 2: Build Windows Installer (Electron)
+  # ─────────────────────────────────────────
+  build-windows:
+    name: Build Windows Installer
+    needs: build-react
+    runs-on: windows-latest
+    if: ${{ github.event.inputs.build_target == 'both' || github.event.inputs.build_target == 'windows-only' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Download React dist
+        uses: actions/download-artifact@v4
+        with:
+          name: react-dist
+          path: dist/
+
+      - name: Build Windows installer
+        run: npx electron-builder --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist-electron/*.exe
+          retention-days: 30
+
+  # ─────────────────────────────────────────
+  # JOB 3: Build Android APK (Capacitor)
+  # ─────────────────────────────────────────
+  build-android:
+    name: Build Android APK
+    needs: build-react
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.build_target == 'both' || github.event.inputs.build_target == 'android-only' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Download React dist
+        uses: actions/download-artifact@v4
+        with:
+          name: react-dist
+          path: dist/
+
+      - name: Install Capacitor CLI globally
+        run: npm install -g @capacitor/cli
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync Capacitor with dist
+        run: npx cap sync android
+
+      - name: Install icon copy dependencies (Python Pillow)
+        run: pip install pillow
+
+      - name: Copy app icons into Android res folders
+        run: |
+          python3 << 'PY'
+          from PIL import Image, ImageDraw
+          import os, shutil
+
+          def draw_icon(size=512):
+              img = Image.new('RGBA', (size, size), (0,0,0,0))
+              draw = ImageDraw.Draw(img)
+              cx, cy = size//2, size//2
+              r = int(size * 0.47)
+              for i in range(r, 0, -2):
+                  ratio = i / r
+                  R = int(10 + ratio * 16); G = int(20 + ratio * 55); B = int(40 + ratio * 80)
+                  draw.ellipse([cx-i, cy-i, cx+i, cy+i], fill=(R,G,B,255))
+              draw.ellipse([cx-r, cy-r, cx+r, cy+r], outline=(26,107,138,255), width=max(3, size//90))
+              arm = int(size * 0.44); w = int(size * 0.22)
+              teal = (22, 184, 163, 240); rad = max(4, size // 22)
+              draw.rounded_rectangle([cx-w//2, cy-arm//2, cx+w//2, cy+arm//2], radius=rad, fill=teal)
+              draw.rounded_rectangle([cx-arm//2, cy-w//2, cx+arm//2, cy+w//2], radius=rad, fill=teal)
+              hole = int(size * 0.105)
+              for i in range(hole, 0, -2):
+                  ratio = i / hole
+                  R = int(10 + ratio * 16); G = int(20 + ratio * 55); B = int(40 + ratio * 80)
+                  draw.ellipse([cx-i, cy-i, cx+i, cy+i], fill=(R,G,B,255))
+              ring_r = int(size * 0.078); ring_w = max(3, size // 42)
+              draw.ellipse([cx-ring_r, cy-ring_r, cx+ring_r, cy+ring_r], outline=(240,200,96,255), width=ring_w)
+              sw = max(2, size//56); sy0 = cy - ring_r - int(size * 0.055); sy1 = cy - ring_r + ring_w
+              if sy1 > sy0:
+                  draw.rectangle([cx-sw, sy0, cx+sw, sy1], fill=(240,200,96,255))
+              kd = max(4, size // 44)
+              draw.ellipse([cx-kd, sy0-kd, cx+kd, sy0+kd], fill=(240,200,96,255))
+              dot_r = max(2, size // 58); offset = int(size * 0.185)
+              for dx, dy in [(0,-offset),(0,offset),(-offset,0),(offset,0)]:
+                  draw.ellipse([cx+dx-dot_r, cy+dy-dot_r, cx+dx+dot_r, cy+dy+dot_r], fill=(255,255,255,50))
+              mask = Image.new('L', (size, size), 0)
+              ImageDraw.Draw(mask).ellipse([cx-r, cy-r, cx+r, cy+r], fill=255)
+              img.putalpha(mask)
+              return img
+
+          android_sizes = {
+              'mipmap-mdpi':    48,
+              'mipmap-hdpi':    72,
+              'mipmap-xhdpi':   96,
+              'mipmap-xxhdpi':  144,
+              'mipmap-xxxhdpi': 192,
+          }
+
+          res_base = 'android/app/src/main/res'
+          for folder, size in android_sizes.items():
+              d = os.path.join(res_base, folder)
+              os.makedirs(d, exist_ok=True)
+              img = draw_icon(size)
+              # Convert RGBA to square RGB for launcher
+              bg = Image.new('RGB', (size, size), (10, 31, 61))
+              bg.paste(img, (0, 0), img)
+              bg.save(os.path.join(d, 'ic_launcher.png'))
+              bg.save(os.path.join(d, 'ic_launcher_round.png'))
+              print(f"Written {folder}/ic_launcher.png ({size}x{size})")
+
+          print("All Android icons written!")
+          PY
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Build debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK to anisha-survey.apk
+        run: mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/anisha-survey.apk
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/debug/anisha-survey.apk
+          retention-days: 30
+
+  # ─────────────────────────────────────────
+  # JOB 4: Create GitHub Release
+  # ─────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    if: always() && (needs.build-windows.result == 'success' || needs.build-android.result == 'success')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Windows installer
+        if: needs.build-windows.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-files/
+
+      - name: Download Android APK
+        if: needs.build-android.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release-files/
+
+      - name: Get version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          name: "Anisa Survey App v${{ steps.version.outputs.version }} (Build ${{ github.run_number }})"
+          body: |
+            ## Anisa Medical Hazardous Waste Survey App
+            **Honiara Referral Hospital · Solomon Islands**
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | 🪟 Windows | `Anisa Medical Survey Setup.exe` |
+            | 🤖 Android | `anisha-survey.apk` |
+
+            ### Installation
+            **Windows:** Run the `.exe` installer and follow the setup wizard.
+            **Android:** Enable "Install from unknown sources" in Settings, then open `anisha-survey.apk`.
+          files: release-files/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
