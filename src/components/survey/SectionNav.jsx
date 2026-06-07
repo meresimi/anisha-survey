@@ -1,7 +1,7 @@
-import { BookOpen, AlertTriangle, Wind, Droplets, Settings, FileText, User, CheckCircle2 } from 'lucide-react'
+import { BookOpen, AlertTriangle, Wind, Droplets, Settings, FileText, User, CheckCircle2, Shield } from 'lucide-react'
 import styles from './SectionNav.module.css'
 
-const ICONS = { User, BookOpen, AlertTriangle, Wind, Droplets, Settings, FileText }
+const ICONS = { User, BookOpen, AlertTriangle, Wind, Droplets, Settings, FileText, Shield }
 
 export default function SectionNav({ sections, currentSection, onSelect, getSectionProgress }) {
   return (
