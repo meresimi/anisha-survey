@@ -10,10 +10,10 @@
       "group": "AnisaSurveyApp"
     },
     "SplashScreen": {
-      "launchShowDuration": 0
+      "launchShowDuration": 0,
+      "backgroundColor": "#0f1f3d",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
     }
-  },
-  "android": {
-    "icon": "public/icon.png"
   }
 }
