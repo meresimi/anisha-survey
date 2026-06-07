@@ -73,7 +73,6 @@ jobs:
         run: |
           Add-Type -AssemblyName System.Drawing
 
-          # Draw the icon in PowerShell using GDI+
           function New-IconBitmap {
             param([int]$Size)
             $bmp = New-Object System.Drawing.Bitmap($Size, $Size)
@@ -83,33 +82,26 @@ jobs:
             $cx = $Size / 2
             $r  = [int]($Size * 0.47)
 
-            # Navy background circle
             $navyBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 10, 31, 61))
             $g.FillEllipse($navyBrush, ($cx - $r), ($cx - $r), ($r * 2), ($r * 2))
             $navyBrush.Dispose()
 
-            # Teal cross - vertical
             $tealBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(240, 22, 184, 163))
-            $arm = [int]($Size * 0.44)
-            $w   = [int]($Size * 0.22)
+            $arm = [int]($Size * 0.44); $w = [int]($Size * 0.22)
             $g.FillRectangle($tealBrush, ($cx - $w/2), ($cx - $arm/2), $w, $arm)
-            # Teal cross - horizontal
             $g.FillRectangle($tealBrush, ($cx - $arm/2), ($cx - $w/2), $arm, $w)
             $tealBrush.Dispose()
 
-            # Navy center hole
             $holeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 10, 31, 61))
             $hole = [int]($Size * 0.11)
             $g.FillEllipse($holeBrush, ($cx - $hole), ($cx - $hole), ($hole * 2), ($hole * 2))
             $holeBrush.Dispose()
 
-            # Gold ring
             $goldPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 240, 200, 96), [int]([Math]::Max(3, $Size / 42)))
             $ringR = [int]($Size * 0.078)
             $g.DrawEllipse($goldPen, ($cx - $ringR), ($cx - $ringR), ($ringR * 2), ($ringR * 2))
             $goldPen.Dispose()
 
-            # Border ring
             $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 26, 107, 138), [int]([Math]::Max(2, $Size / 90)))
             $g.DrawEllipse($borderPen, ($cx - $r + 1), ($cx - $r + 1), ($r * 2 - 2), ($r * 2 - 2))
             $borderPen.Dispose()
@@ -118,63 +110,36 @@ jobs:
             return $bmp
           }
 
-          # Build ICO file manually - proper ICO binary format
-          # ICO = header + directory entries + image data (PNG format inside ICO)
-          $sizes  = @(16, 32, 48, 64, 128, 256)
+          $sizes    = @(16, 32, 48, 64, 128, 256)
           $pngDatas = @()
-
           foreach ($size in $sizes) {
             $bmp = New-IconBitmap -Size $size
             $ms  = New-Object System.IO.MemoryStream
             $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
             $pngDatas += , $ms.ToArray()
-            $bmp.Dispose()
-            $ms.Dispose()
+            $bmp.Dispose(); $ms.Dispose()
           }
 
-          # ICO header: reserved(2) + type=1(2) + count(2)
-          $count     = $sizes.Count
-          $headerSz  = 6
-          $dirEntrySz = 16
+          $count = $sizes.Count
+          $headerSz  = 6; $dirEntrySz = 16
           $offset    = $headerSz + $dirEntrySz * $count
-
           $ms = New-Object System.IO.MemoryStream
           $bw = New-Object System.IO.BinaryWriter($ms)
-
-          # Header
-          $bw.Write([uint16]0)      # reserved
-          $bw.Write([uint16]1)      # type: ICO
-          $bw.Write([uint16]$count) # image count
-
-          # Directory
+          $bw.Write([uint16]0); $bw.Write([uint16]1); $bw.Write([uint16]$count)
           for ($i = 0; $i -lt $count; $i++) {
-            $sz  = $sizes[$i]
-            $len = $pngDatas[$i].Length
-            $bw.Write([byte]$(if ($sz -ge 256) { 0 } else { $sz }))  # width  (0=256)
-            $bw.Write([byte]$(if ($sz -ge 256) { 0 } else { $sz }))  # height (0=256)
-            $bw.Write([byte]0)       # color count
-            $bw.Write([byte]0)       # reserved
-            $bw.Write([uint16]1)     # planes
-            $bw.Write([uint16]32)    # bit count
-            $bw.Write([uint32]$len)  # size of image data
-            $bw.Write([uint32]$offset) # offset
+            $sz = $sizes[$i]; $len = $pngDatas[$i].Length
+            $bw.Write([byte]$(if ($sz -ge 256) { 0 } else { $sz }))
+            $bw.Write([byte]$(if ($sz -ge 256) { 0 } else { $sz }))
+            $bw.Write([byte]0); $bw.Write([byte]0)
+            $bw.Write([uint16]1); $bw.Write([uint16]32)
+            $bw.Write([uint32]$len); $bw.Write([uint32]$offset)
             $offset += $len
           }
-
-          # Image data
-          foreach ($png in $pngDatas) {
-            $bw.Write($png)
-          }
-
+          foreach ($png in $pngDatas) { $bw.Write($png) }
           $bw.Flush()
-          $icoBytes = $ms.ToArray()
-          $bw.Dispose()
-          $ms.Dispose()
-
-          # Write ICO
+          $icoBytes = $ms.ToArray(); $bw.Dispose(); $ms.Dispose()
           [System.IO.File]::WriteAllBytes("$PWD\public\icon.ico", $icoBytes)
-          Write-Host "Generated icon.ico: $($icoBytes.Length) bytes, $count sizes"
-          Write-Host "Sizes: $($sizes -join ', ')"
+          Write-Host "Generated icon.ico: $($icoBytes.Length) bytes"
 
       - name: Build Windows installer
         run: npx electron-builder --win --x64
@@ -232,14 +197,19 @@ jobs:
       - name: Sync Capacitor with dist
         run: npx cap sync android
 
-      - name: Generate and inject Android launcher icons
+      - name: Generate and inject Android launcher icons + splash
         run: |
           pip install pillow
           python3 << 'PY'
           from PIL import Image, ImageDraw
           import os
 
-          def draw_icon(size):
+          def draw_icon(size, square=False):
+              """
+              Draw the app icon. If square=True, return a flat RGB image
+              (needed for Android launcher PNGs). If square=False, return
+              RGBA with circular mask (for splash / web use).
+              """
               img  = Image.new('RGBA', (size, size), (0,0,0,0))
               draw = ImageDraw.Draw(img)
               cx = cy = size // 2
@@ -251,7 +221,7 @@ jobs:
                   draw.ellipse([cx-i, cy-i, cx+i, cy+i],
                                fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
 
-              # Border
+              # Border ring
               draw.ellipse([cx-r, cy-r, cx+r, cy+r],
                            outline=(26,107,138,255), width=max(2, size//90))
 
@@ -263,7 +233,7 @@ jobs:
               draw.rounded_rectangle([cx-arm//2, cy-w//2, cx+arm//2, cy+w//2],
                                      radius=rad, fill=(22,184,163,240))
 
-              # Navy center hole
+              # Navy centre hole
               hole = int(size * 0.105)
               for i in range(hole, 0, -2):
                   t = i / hole
@@ -271,8 +241,7 @@ jobs:
                                fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
 
               # Gold ring
-              rr = int(size * 0.078)
-              rw = max(3, size // 42)
+              rr = int(size * 0.078); rw = max(3, size // 42)
               draw.ellipse([cx-rr, cy-rr, cx+rr, cy+rr],
                            outline=(240,200,96,255), width=rw)
 
@@ -290,12 +259,15 @@ jobs:
               ImageDraw.Draw(mask).ellipse([cx-r, cy-r, cx+r, cy+r], fill=255)
               img.putalpha(mask)
 
-              # Flatten onto navy background (Android needs opaque PNG)
-              bg = Image.new('RGB', (size, size), (10, 20, 40))
-              bg.paste(img, (0, 0), img)
-              return bg
+              if square:
+                  # Flatten onto navy background for Android
+                  bg = Image.new('RGB', (size, size), (10, 20, 40))
+                  bg.paste(img, (0, 0), img)
+                  return bg
+              return img
 
-          sizes = {
+          # ── Launcher icons (all mipmap densities) ─────────────
+          launcher_sizes = {
               'mipmap-mdpi':    48,
               'mipmap-hdpi':    72,
               'mipmap-xhdpi':   96,
@@ -303,14 +275,48 @@ jobs:
               'mipmap-xxxhdpi': 192,
           }
           res = 'android/app/src/main/res'
-          for folder, sz in sizes.items():
+          for folder, sz in launcher_sizes.items():
               d = os.path.join(res, folder)
               os.makedirs(d, exist_ok=True)
-              icon = draw_icon(sz)
+              icon = draw_icon(sz, square=True)
+              # ic_launcher  — used for home screen icon
               icon.save(os.path.join(d, 'ic_launcher.png'))
+              # ic_launcher_round — used for circular icon variant
               icon.save(os.path.join(d, 'ic_launcher_round.png'))
-              print(f"  {folder}: {sz}x{sz}")
-          print("Android icons done!")
+              print(f'  launcher {folder}: {sz}x{sz}')
+
+          # ── Adaptive icon foreground (API 26+) ────────────────
+          # Foreground is the icon centred in a larger canvas (108dp)
+          # so the system can scale/clip it. We draw at 432px (4× 108dp).
+          adaptive_size = 432
+          fg = draw_icon(adaptive_size, square=False)  # keep RGBA
+          # Place on transparent canvas with padding
+          canvas = Image.new('RGBA', (adaptive_size, adaptive_size), (0,0,0,0))
+          canvas.paste(fg, (0,0), fg)
+          for folder in launcher_sizes:
+              d = os.path.join(res, folder)
+              canvas_resized = canvas.resize(
+                  (launcher_sizes[folder], launcher_sizes[folder]),
+                  Image.LANCZOS
+              )
+              canvas_resized.save(os.path.join(d, 'ic_launcher_foreground.png'))
+
+          # ── Splash screen image ───────────────────────────────
+          # Android splash: 1080×1920 (portrait) navy background + centred icon
+          for folder, sz_splash in [('drawable', 288), ('drawable-hdpi', 288),
+                                     ('drawable-xhdpi', 384), ('drawable-xxhdpi', 432)]:
+              d = os.path.join(res, folder)
+              os.makedirs(d, exist_ok=True)
+              splash = Image.new('RGB', (1080, 1920), (10, 20, 40))
+              icon   = draw_icon(sz_splash, square=False)
+              # Paste centred
+              x = (1080 - sz_splash) // 2
+              y = (1920 - sz_splash) // 2
+              splash.paste(icon, (x, y), icon)
+              splash.save(os.path.join(d, 'splash.png'))
+              print(f'  splash   {folder}: icon {sz_splash}px centred on 1080×1920')
+
+          print('All Android icons and splash screens generated!')
           PY
 
       - name: Make gradlew executable
