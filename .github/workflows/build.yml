@@ -76,83 +76,44 @@ jobs:
       - name: Install Pillow
         run: pip install pillow
 
-      - name: Generate icon.png and icon.ico from same artwork
+      - name: Convert icon.png to icon.ico (same image, proper Windows ICO format)
         shell: python
         run: |
-          from PIL import Image, ImageDraw
+          from PIL import Image
           import io, os, struct
 
-          def draw_icon(size):
-              img  = Image.new('RGBA', (size, size), (0,0,0,0))
-              draw = ImageDraw.Draw(img)
-              cx = cy = size // 2
-              r  = int(size * 0.47)
-              for i in range(r, 0, -2):
-                  t = i / r
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
-                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
-              draw.ellipse([cx-r, cy-r, cx+r, cy+r],
-                           outline=(26,107,138,255), width=max(2, size//90))
-              arm = int(size * 0.44); w = int(size * 0.22)
-              rad = max(4, size // 22)
-              draw.rounded_rectangle([cx-w//2, cy-arm//2, cx+w//2, cy+arm//2],
-                                     radius=rad, fill=(22,184,163,240))
-              draw.rounded_rectangle([cx-arm//2, cy-w//2, cx+arm//2, cy+w//2],
-                                     radius=rad, fill=(22,184,163,240))
-              hole = int(size * 0.105)
-              for i in range(hole, 0, -2):
-                  t = i / hole
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
-                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
-              rr = int(size * 0.078); rw = max(3, size // 42)
-              draw.ellipse([cx-rr, cy-rr, cx+rr, cy+rr],
-                           outline=(240,200,96,255), width=rw)
-              sw  = max(2, size//56)
-              sy0 = cy - rr - int(size * 0.055)
-              sy1 = cy - rr + rw
-              if sy1 > sy0:
-                  draw.rectangle([cx-sw, sy0, cx+sw, sy1], fill=(240,200,96,255))
-              kd = max(4, size//44)
-              draw.ellipse([cx-kd, sy0-kd, cx+kd, sy0+kd], fill=(240,200,96,255))
-              mask = Image.new('L', (size, size), 0)
-              ImageDraw.Draw(mask).ellipse([cx-r, cy-r, cx+r, cy+r], fill=255)
-              img.putalpha(mask)
-              return img
+          # Load icon.png from the repo — this is the single source of truth
+          src = Image.open('public/icon.png').convert('RGBA')
+          print(f"Source: {src.size} {src.mode}")
 
-          def build_ico(sizes):
-              png_bufs = []
-              for s in sizes:
-                  buf = io.BytesIO()
-                  draw_icon(s).save(buf, format='PNG')
-                  png_bufs.append(buf.getvalue())
-              n = len(sizes)
-              offsets = []
-              offset  = 6 + 16 * n
-              for b in png_bufs:
-                  offsets.append(offset)
-                  offset += len(b)
-              out = bytearray()
-              out += struct.pack('<HHH', 0, 1, n)
-              for i, (s, b) in enumerate(zip(sizes, png_bufs)):
-                  w = 0 if s >= 256 else s
-                  h = 0 if s >= 256 else s
-                  out += struct.pack('<BBBBHHII', w, h, 0, 0, 1, 32, len(b), offsets[i])
-              for b in png_bufs:
-                  out += b
-              return bytes(out)
+          sizes = [16, 32, 48, 64, 128, 256]
+          bufs  = []
+          for s in sizes:
+              b = io.BytesIO()
+              src.resize((s, s), Image.LANCZOS).save(b, format='PNG')
+              bufs.append(b.getvalue())
 
-          os.makedirs('public', exist_ok=True)
+          n      = len(sizes)
+          offset = 6 + 16 * n
+          offs   = []
+          for b in bufs:
+              offs.append(offset)
+              offset += len(b)
 
-          # icon.png — 512×512 (same artwork)
-          draw_icon(512).save('public/icon.png')
-          print(f"icon.png saved: {os.path.getsize('public/icon.png'):,} bytes")
+          out = bytearray()
+          out += struct.pack('<HHH', 0, 1, n)
+          for i, (s, b) in enumerate(zip(sizes, bufs)):
+              w = 0 if s >= 256 else s
+              h = 0 if s >= 256 else s
+              out += struct.pack('<BBBBHHII', w, h, 0, 0, 1, 32, len(b), offs[i])
+          for b in bufs:
+              out += b
 
-          # icon.ico — same artwork, 6 sizes, proper Windows ICO binary
-          ico = build_ico([16, 32, 48, 64, 128, 256])
           with open('public/icon.ico', 'wb') as f:
-              f.write(ico)
-          print(f"icon.ico saved: {len(ico):,} bytes — 6 sizes (16 to 256)")
+              f.write(out)
+          print(f"icon.ico: {len(out):,} bytes, sizes={sizes}")
 
+      - name: Build Windows installer
       - name: Build Windows installer
         run: npx electron-builder --win --x64
         env:
