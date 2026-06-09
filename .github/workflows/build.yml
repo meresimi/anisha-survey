@@ -114,7 +114,6 @@ jobs:
           print(f"icon.ico: {len(out):,} bytes, sizes={sizes}")
 
       - name: Build Windows installer
-      - name: Build Windows installer
         run: npx electron-builder --win --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
