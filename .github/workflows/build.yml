@@ -172,52 +172,30 @@ jobs:
       - name: Install Pillow
         run: pip install pillow
 
-      - name: Generate Android launcher icons and splash screen
+      - name: Generate Android launcher icons from icon.png
         run: |
-          python3 << 'PY'
+          python3 << 'PY2'
           from PIL import Image, ImageDraw
           import os
 
-          def draw_icon(size, square=False):
-              img  = Image.new('RGBA', (size, size), (0,0,0,0))
-              draw = ImageDraw.Draw(img)
-              cx = cy = size // 2
-              r  = int(size * 0.47)
-              for i in range(r, 0, -2):
-                  t = i / r
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
-                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
-              draw.ellipse([cx-r, cy-r, cx+r, cy+r],
-                           outline=(26,107,138,255), width=max(2, size//90))
-              arm = int(size * 0.44); w = int(size * 0.22)
-              rad = max(4, size // 22)
-              draw.rounded_rectangle([cx-w//2, cy-arm//2, cx+w//2, cy+arm//2],
-                                     radius=rad, fill=(22,184,163,240))
-              draw.rounded_rectangle([cx-arm//2, cy-w//2, cx+arm//2, cy+w//2],
-                                     radius=rad, fill=(22,184,163,240))
-              hole = int(size * 0.105)
-              for i in range(hole, 0, -2):
-                  t = i / hole
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
-                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
-              rr = int(size * 0.078); rw = max(3, size // 42)
-              draw.ellipse([cx-rr, cy-rr, cx+rr, cy+rr],
-                           outline=(240,200,96,255), width=rw)
-              sw  = max(2, size//56)
-              sy0 = cy - rr - int(size * 0.055)
-              sy1 = cy - rr + rw
-              if sy1 > sy0:
-                  draw.rectangle([cx-sw, sy0, cx+sw, sy1], fill=(240,200,96,255))
-              kd = max(4, size//44)
-              draw.ellipse([cx-kd, sy0-kd, cx+kd, sy0+kd], fill=(240,200,96,255))
-              mask = Image.new('L', (size, size), 0)
-              ImageDraw.Draw(mask).ellipse([cx-r, cy-r, cx+r, cy+r], fill=255)
-              img.putalpha(mask)
-              if square:
-                  bg = Image.new('RGB', (size, size), (10, 20, 40))
-                  bg.paste(img, (0, 0), img)
-                  return bg
-              return img
+          src = Image.open('public/icon.png').convert('RGBA')
+          print(f"Source icon.png: {src.size}")
+
+          def make_square(source, size):
+              img = source.resize((size, size), Image.LANCZOS)
+              bg  = Image.new('RGBA', (size, size), (10, 20, 40, 255))
+              bg.paste(img, (0,0))
+              result = Image.new('RGB', (size, size))
+              result.paste(bg.convert('RGB'))
+              return result
+
+          def make_circle_fg(source, size):
+              img    = source.resize((size, size), Image.LANCZOS)
+              result = Image.new('RGBA', (size, size), (0,0,0,0))
+              mask   = Image.new('L', (size, size), 0)
+              ImageDraw.Draw(mask).ellipse([0,0,size-1,size-1], fill=255)
+              result.paste(img, (0,0), mask)
+              return result
 
           res = 'android/app/src/main/res'
           for folder, sz in [('mipmap-mdpi',48),('mipmap-hdpi',72),
@@ -225,30 +203,26 @@ jobs:
                               ('mipmap-xxxhdpi',192)]:
               d = os.path.join(res, folder)
               os.makedirs(d, exist_ok=True)
-              icon = draw_icon(sz, square=True)
-              icon.save(os.path.join(d, 'ic_launcher.png'))
-              icon.save(os.path.join(d, 'ic_launcher_round.png'))
-              fg = draw_icon(sz, square=False)
-              bg = Image.new('RGBA', (sz, sz), (10, 20, 40, 255))
-              bg.paste(fg, (0, 0), fg)
-              bg.save(os.path.join(d, 'ic_launcher_foreground.png'))
+              make_square(src, sz).save(os.path.join(d, 'ic_launcher.png'))
+              make_square(src, sz).save(os.path.join(d, 'ic_launcher_round.png'))
+              make_circle_fg(src, sz).save(os.path.join(d, 'ic_launcher_foreground.png'))
               print(f'  {folder}: {sz}x{sz}')
 
+          # Splash screen — photo centred on navy background
           for folder, icon_sz in [('drawable',288),('drawable-hdpi',288),
                                    ('drawable-xhdpi',384),('drawable-xxhdpi',432)]:
               d = os.path.join(res, folder)
               os.makedirs(d, exist_ok=True)
               splash = Image.new('RGB', (1080, 1920), (10, 20, 40))
-              icon   = draw_icon(icon_sz, square=False)
+              icon   = make_circle_fg(src, icon_sz)
               x = (1080 - icon_sz) // 2
               y = (1920 - icon_sz) // 2
               splash.paste(icon, (x, y), icon)
               splash.save(os.path.join(d, 'splash.png'))
               print(f'  splash {folder}: {icon_sz}px')
 
-          print('Android icons and splash done!')
-          PY
-
+          print('Android icons done!')
+          PY2
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
@@ -334,99 +308,57 @@ jobs:
       - name: Install Pillow for icon generation
         run: pip3 install pillow
 
-      - name: Generate iOS app icons
+      - name: Generate iOS app icons from icon.png
         run: |
-          python3 << 'PY'
+          python3 << 'PY2'
           from PIL import Image, ImageDraw
-          import os
+          import os, json
 
-          def draw_icon(size):
-              img  = Image.new('RGBA', (size, size), (0,0,0,0))
-              draw = ImageDraw.Draw(img)
-              cx = cy = size // 2
-              r  = int(size * 0.47)
-              for i in range(r, 0, -2):
-                  t = i / r
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
-                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
-              draw.ellipse([cx-r, cy-r, cx+r, cy+r],
-                           outline=(26,107,138,255), width=max(2, size//90))
-              arm = int(size * 0.44); w = int(size * 0.22)
-              rad = max(4, size // 22)
-              draw.rounded_rectangle([cx-w//2, cy-arm//2, cx+w//2, cy+arm//2],
-                                     radius=rad, fill=(22,184,163,240))
-              draw.rounded_rectangle([cx-arm//2, cy-w//2, cx+arm//2, cy+w//2],
-                                     radius=rad, fill=(22,184,163,240))
-              hole = int(size * 0.105)
-              for i in range(hole, 0, -2):
-                  t = i / hole
-                  draw.ellipse([cx-i, cy-i, cx+i, cy+i],
-                               fill=(int(10+t*16), int(20+t*55), int(40+t*80), 255))
-              rr = int(size * 0.078); rw = max(3, size // 42)
-              draw.ellipse([cx-rr, cy-rr, cx+rr, cy+rr],
-                           outline=(240,200,96,255), width=rw)
-              sw  = max(2, size//56)
-              sy0 = cy - rr - int(size * 0.055)
-              sy1 = cy - rr + rw
-              if sy1 > sy0:
-                  draw.rectangle([cx-sw, sy0, cx+sw, sy1], fill=(240,200,96,255))
-              kd = max(4, size//44)
-              draw.ellipse([cx-kd, sy0-kd, cx+kd, sy0+kd], fill=(240,200,96,255))
-              # iOS icons must be square with NO transparency — flatten to white bg
-              bg = Image.new('RGB', (size, size), (255, 255, 255))
-              mask = Image.new('L', (size, size), 0)
-              ImageDraw.Draw(mask).ellipse([cx-r, cy-r, cx+r, cy+r], fill=255)
-              img.putalpha(mask)
-              bg.paste(img, (0, 0), img)
-              return bg
+          src = Image.open('public/icon.png').convert('RGBA')
+          print(f"Source icon.png: {src.size}")
 
-          # iOS required icon sizes (points × scale)
-          ios_sizes = [
-              20, 29, 40, 58, 60, 76, 80, 87, 120,
-              152, 167, 180, 1024
-          ]
+          def make_ios_icon(source, size):
+              # iOS icons: square, no transparency, white background
+              img    = source.resize((size, size), Image.LANCZOS)
+              result = Image.new('RGB', (size, size), (255, 255, 255))
+              result.paste(img.convert('RGB'), (0,0))
+              return result
 
-          # Capacitor iOS icon path
           icon_dir = 'ios/App/App/Assets.xcassets/AppIcon.appiconset'
           os.makedirs(icon_dir, exist_ok=True)
 
+          ios_sizes = [20,29,40,58,60,76,80,87,120,152,167,180,1024]
           for sz in ios_sizes:
-              icon = draw_icon(sz)
-              path = os.path.join(icon_dir, f'AppIcon-{sz}.png')
-              icon.save(path)
-              print(f'  {path}: {sz}x{sz}')
+              make_ios_icon(src, sz).save(os.path.join(icon_dir, f'AppIcon-{sz}.png'))
+              print(f'  AppIcon-{sz}.png')
 
-          # Write Contents.json for Xcode to recognise the icons
-          import json
           contents = {
             "images": [
-              {"idiom":"iphone","scale":"2x","size":"20x20",  "filename":"AppIcon-40.png"},
-              {"idiom":"iphone","scale":"3x","size":"20x20",  "filename":"AppIcon-60.png"},
-              {"idiom":"iphone","scale":"2x","size":"29x29",  "filename":"AppIcon-58.png"},
-              {"idiom":"iphone","scale":"3x","size":"29x29",  "filename":"AppIcon-87.png"},
-              {"idiom":"iphone","scale":"2x","size":"40x40",  "filename":"AppIcon-80.png"},
-              {"idiom":"iphone","scale":"3x","size":"40x40",  "filename":"AppIcon-120.png"},
-              {"idiom":"iphone","scale":"2x","size":"60x60",  "filename":"AppIcon-120.png"},
-              {"idiom":"iphone","scale":"3x","size":"60x60",  "filename":"AppIcon-180.png"},
-              {"idiom":"ipad",  "scale":"1x","size":"20x20",  "filename":"AppIcon-20.png"},
-              {"idiom":"ipad",  "scale":"2x","size":"20x20",  "filename":"AppIcon-40.png"},
-              {"idiom":"ipad",  "scale":"1x","size":"29x29",  "filename":"AppIcon-29.png"},
-              {"idiom":"ipad",  "scale":"2x","size":"29x29",  "filename":"AppIcon-58.png"},
-              {"idiom":"ipad",  "scale":"1x","size":"40x40",  "filename":"AppIcon-40.png"},
-              {"idiom":"ipad",  "scale":"2x","size":"40x40",  "filename":"AppIcon-80.png"},
-              {"idiom":"ipad",  "scale":"1x","size":"76x76",  "filename":"AppIcon-76.png"},
-              {"idiom":"ipad",  "scale":"2x","size":"76x76",  "filename":"AppIcon-152.png"},
-              {"idiom":"ipad",  "scale":"2x","size":"83.5x83.5","filename":"AppIcon-167.png"},
+              {"idiom":"iphone","scale":"2x","size":"20x20",     "filename":"AppIcon-40.png"},
+              {"idiom":"iphone","scale":"3x","size":"20x20",     "filename":"AppIcon-60.png"},
+              {"idiom":"iphone","scale":"2x","size":"29x29",     "filename":"AppIcon-58.png"},
+              {"idiom":"iphone","scale":"3x","size":"29x29",     "filename":"AppIcon-87.png"},
+              {"idiom":"iphone","scale":"2x","size":"40x40",     "filename":"AppIcon-80.png"},
+              {"idiom":"iphone","scale":"3x","size":"40x40",     "filename":"AppIcon-120.png"},
+              {"idiom":"iphone","scale":"2x","size":"60x60",     "filename":"AppIcon-120.png"},
+              {"idiom":"iphone","scale":"3x","size":"60x60",     "filename":"AppIcon-180.png"},
+              {"idiom":"ipad",  "scale":"1x","size":"20x20",     "filename":"AppIcon-20.png"},
+              {"idiom":"ipad",  "scale":"2x","size":"20x20",     "filename":"AppIcon-40.png"},
+              {"idiom":"ipad",  "scale":"1x","size":"29x29",     "filename":"AppIcon-29.png"},
+              {"idiom":"ipad",  "scale":"2x","size":"29x29",     "filename":"AppIcon-58.png"},
+              {"idiom":"ipad",  "scale":"1x","size":"40x40",     "filename":"AppIcon-40.png"},
+              {"idiom":"ipad",  "scale":"2x","size":"40x40",     "filename":"AppIcon-80.png"},
+              {"idiom":"ipad",  "scale":"1x","size":"76x76",     "filename":"AppIcon-76.png"},
+              {"idiom":"ipad",  "scale":"2x","size":"76x76",     "filename":"AppIcon-152.png"},
+              {"idiom":"ipad",  "scale":"2x","size":"83.5x83.5", "filename":"AppIcon-167.png"},
               {"idiom":"ios-marketing","scale":"1x","size":"1024x1024","filename":"AppIcon-1024.png"}
             ],
             "info": {"author":"xcode","version":1}
           }
-          with open(os.path.join(icon_dir, 'Contents.json'), 'w') as f:
+          with open(os.path.join(icon_dir,'Contents.json'),'w') as f:
               json.dump(contents, f, indent=2)
-          print('Contents.json written')
           print('iOS icons done!')
-          PY
-
+          PY2
       - name: Install Xcode dependencies (CocoaPods)
         run: |
           cd ios/App
