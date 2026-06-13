@@ -2,22 +2,11 @@ name: Anisa Survey App — Build
 
 on:
   workflow_dispatch:
-    inputs:
-      build_target:
-        description: 'What do you want to build?'
-        required: true
-        default: 'android'
-        type: choice
-        options:
-          - android
-          - windows
-          - ios
-          - react-only
 
 jobs:
 
   # ═══════════════════════════════════════════════════
-  # JOB 1 — Build React App (runs for ALL targets)
+  # JOB 1 — Build React App
   # ═══════════════════════════════════════════════════
   build-react:
     name: Build React App
@@ -45,88 +34,12 @@ jobs:
           retention-days: 1
 
   # ═══════════════════════════════════════════════════
-  # JOB 2 — Build Windows Installer
-  # ═══════════════════════════════════════════════════
-  build-windows:
-    name: Build Windows Installer
-    needs: build-react
-    runs-on: windows-latest
-    if: github.event.inputs.build_target == 'windows'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Download React dist
-        uses: actions/download-artifact@v4
-        with:
-          name: react-dist
-          path: dist/
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Pillow
-        run: pip install pillow
-
-      - name: Convert icon.png to icon.ico
-        shell: python
-        run: |
-          from PIL import Image
-          import io, os, struct
-          src   = Image.open('public/icon.png').convert('RGBA')
-          sizes = [16, 32, 48, 64, 128, 256]
-          bufs  = []
-          for s in sizes:
-              b = io.BytesIO()
-              src.resize((s, s), Image.LANCZOS).save(b, format='PNG')
-              bufs.append(b.getvalue())
-          n      = len(sizes)
-          offset = 6 + 16 * n
-          offs   = []
-          for b in bufs:
-              offs.append(offset); offset += len(b)
-          out = bytearray()
-          out += struct.pack('<HHH', 0, 1, n)
-          for i, (s, b) in enumerate(zip(sizes, bufs)):
-              w = 0 if s >= 256 else s
-              h = 0 if s >= 256 else s
-              out += struct.pack('<BBBBHHII', w, h, 0, 0, 1, 32, len(b), offs[i])
-          for b in bufs:
-              out += b
-          with open('public/icon.ico', 'wb') as f:
-              f.write(out)
-          print(f"icon.ico: {len(out):,} bytes")
-
-      - name: Build Windows installer
-        run: npx electron-builder --win --x64
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: dist-electron/*.exe
-          retention-days: 30
-
-  # ═══════════════════════════════════════════════════
-  # JOB 3 — Build Android APK
+  # JOB 2 — Build Android APK
   # ═══════════════════════════════════════════════════
   build-android:
     name: Build Android APK
     needs: build-react
     runs-on: ubuntu-latest
-    if: github.event.inputs.build_target == 'android'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -264,170 +177,23 @@ jobs:
           retention-days: 30
 
   # ═══════════════════════════════════════════════════
-  # JOB 4 — Build iOS App
-  # ═══════════════════════════════════════════════════
-  build-ios:
-    name: Build iOS App
-    needs: build-react
-    runs-on: macos-latest
-    if: github.event.inputs.build_target == 'ios'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Download React dist
-        uses: actions/download-artifact@v4
-        with:
-          name: react-dist
-          path: dist/
-
-      - name: Install Capacitor CLI globally
-        run: npm install -g @capacitor/cli
-
-      - name: Install CocoaPods
-        run: sudo gem install cocoapods
-
-      - name: Add iOS platform
-        run: npx cap add ios
-
-      - name: Sync Capacitor with dist
-        run: npx cap sync ios
-
-      - name: Install Pillow
-        run: pip3 install pillow
-
-      - name: Generate iOS icons from icon.png
-        run: |
-          python3 - << 'PYEOF'
-          from PIL import Image, ImageDraw
-          import os, json
-
-          src = Image.open('public/icon.png').convert('RGBA')
-
-          def make_ios_icon(source, size):
-              img    = source.resize((size, size), Image.LANCZOS)
-              result = Image.new('RGB', (size, size), (255, 255, 255))
-              result.paste(img.convert('RGB'), (0,0))
-              return result
-
-          icon_dir = 'ios/App/App/Assets.xcassets/AppIcon.appiconset'
-          os.makedirs(icon_dir, exist_ok=True)
-
-          for sz in [20,29,40,58,60,76,80,87,120,152,167,180,1024]:
-              make_ios_icon(src, sz).save(os.path.join(icon_dir, f'AppIcon-{sz}.png'))
-              print(f'  AppIcon-{sz}.png')
-
-          contents = {
-            "images": [
-              {"idiom":"iphone","scale":"2x","size":"20x20","filename":"AppIcon-40.png"},
-              {"idiom":"iphone","scale":"3x","size":"20x20","filename":"AppIcon-60.png"},
-              {"idiom":"iphone","scale":"2x","size":"29x29","filename":"AppIcon-58.png"},
-              {"idiom":"iphone","scale":"3x","size":"29x29","filename":"AppIcon-87.png"},
-              {"idiom":"iphone","scale":"2x","size":"40x40","filename":"AppIcon-80.png"},
-              {"idiom":"iphone","scale":"3x","size":"40x40","filename":"AppIcon-120.png"},
-              {"idiom":"iphone","scale":"2x","size":"60x60","filename":"AppIcon-120.png"},
-              {"idiom":"iphone","scale":"3x","size":"60x60","filename":"AppIcon-180.png"},
-              {"idiom":"ipad","scale":"1x","size":"20x20","filename":"AppIcon-20.png"},
-              {"idiom":"ipad","scale":"2x","size":"20x20","filename":"AppIcon-40.png"},
-              {"idiom":"ipad","scale":"1x","size":"29x29","filename":"AppIcon-29.png"},
-              {"idiom":"ipad","scale":"2x","size":"29x29","filename":"AppIcon-58.png"},
-              {"idiom":"ipad","scale":"1x","size":"40x40","filename":"AppIcon-40.png"},
-              {"idiom":"ipad","scale":"2x","size":"40x40","filename":"AppIcon-80.png"},
-              {"idiom":"ipad","scale":"1x","size":"76x76","filename":"AppIcon-76.png"},
-              {"idiom":"ipad","scale":"2x","size":"76x76","filename":"AppIcon-152.png"},
-              {"idiom":"ipad","scale":"2x","size":"83.5x83.5","filename":"AppIcon-167.png"},
-              {"idiom":"ios-marketing","scale":"1x","size":"1024x1024","filename":"AppIcon-1024.png"}
-            ],
-            "info": {"author":"xcode","version":1}
-          }
-          with open(os.path.join(icon_dir,'Contents.json'),'w') as f:
-              json.dump(contents, f, indent=2)
-          print('iOS icons done!')
-          PYEOF
-
-      - name: Install Xcode dependencies
-        run: |
-          cd ios/App
-          pod install --repo-update
-
-      - name: Build iOS simulator app
-        run: |
-          xcodebuild \
-            -workspace ios/App/App.xcworkspace \
-            -scheme App \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ios/build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            | xcpretty || true
-
-      - name: Package iOS build
-        run: |
-          APP=$(find ios/build -name "*.app" | head -1)
-          if [ -n "$APP" ]; then
-            cd "$(dirname "$APP")"
-            zip -r anisha-survey-ios-simulator.zip "$(basename "$APP")"
-            mv anisha-survey-ios-simulator.zip $GITHUB_WORKSPACE/
-          else
-            echo "iOS simulator build completed." > anisha-survey-ios-build-log.txt
-          fi
-
-      - name: Upload iOS build
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build
-          path: |
-            anisha-survey-ios-simulator.zip
-            anisha-survey-ios-build-log.txt
-          if-no-files-found: warn
-          retention-days: 30
-
-  # ═══════════════════════════════════════════════════
-  # JOB 5 — Create GitHub Release
+  # JOB 3 — Create GitHub Release
   # ═══════════════════════════════════════════════════
   release:
     name: Create GitHub Release
-    needs: [build-windows, build-android, build-ios]
+    needs: build-android
     runs-on: ubuntu-latest
-    if: >
-      always() &&
-      (needs.build-windows.result == 'success' ||
-       needs.build-android.result == 'success' ||
-       needs.build-ios.result == 'success')
+    if: needs.build-android.result == 'success'
     permissions:
       contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download Windows installer
-        if: needs.build-windows.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-installer
-          path: release-files/
-
       - name: Download Android APK
-        if: needs.build-android.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: android-apk
-          path: release-files/
-
-      - name: Download iOS build
-        if: needs.build-ios.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-build
           path: release-files/
 
       - name: Get version
@@ -443,17 +209,13 @@ jobs:
             ## Anisa Medical Hazardous Waste Survey App
             **Honiara Referral Hospital · Solomon Islands**
 
-            ### Downloads
+            ### Download
             | Platform | File |
             |---|---|
-            | Windows | `Anisa Medical Survey Setup.exe` |
             | Android | `anisha-survey.apk` |
-            | iOS (Simulator) | `anisha-survey-ios-simulator.zip` |
 
             ### Installation
-            **Windows:** Run the `.exe` installer and follow the setup wizard.
-            **Android:** Enable "Install from unknown sources" then open `anisha-survey.apk`.
-            **iOS:** Simulator build only. Signed IPA requires Apple Developer account.
+            Enable "Install from unknown sources" in Settings, then open `anisha-survey.apk`.
           files: release-files/*
           draft: false
           prerelease: false
